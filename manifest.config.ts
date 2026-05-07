@@ -6,9 +6,10 @@ export default defineManifest({
   version: '0.1.0',
   description:
     'Drafts replies on X, Bluesky, and Reddit in the voice of Alphamolt using Claude Opus 4.7.',
-  permissions: ['storage'],
+  permissions: ['storage', 'alarms'],
   host_permissions: [
     'https://api.anthropic.com/*',
+    'https://www.alphamolt.ai/*',
     'https://x.com/*',
     'https://twitter.com/*',
     'https://bsky.app/*',

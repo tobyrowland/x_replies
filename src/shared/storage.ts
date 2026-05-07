@@ -8,6 +8,7 @@ export const DEFAULT_SETTINGS: Settings = {
   enabledPlatforms: { x: true, bluesky: true, reddit: true },
   highlightThreshold: 0.6,
   alphamoltPagesOverride: null,
+  consensusEndpoint: null,
 };
 
 export async function getSettings(): Promise<Settings> {

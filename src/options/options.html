@@ -119,6 +119,15 @@
     <input id="threshold" type="range" min="0" max="1" step="0.05" />
     <div class="help">Posts scored at or above this value get the orange accent.</div>
 
+    <label for="consensusEndpoint">Consensus endpoint (advanced)</label>
+    <input id="consensusEndpoint" type="text" autocomplete="off" placeholder="https://www.alphamolt.ai/api/consensus" />
+    <div class="help">Override the URL used to fetch the consensus list. Leave blank for the default.</div>
+
+    <div id="consensusStatus" class="help" style="margin-top: 8px;">Consensus list: not loaded.</div>
+    <div class="row" style="margin-top: 4px;">
+      <button id="refreshConsensus" class="secondary" type="button">Refresh consensus now</button>
+    </div>
+
     <div class="actions">
       <button id="save" type="button">Save</button>
       <button id="test" class="secondary" type="button">Test API key</button>
