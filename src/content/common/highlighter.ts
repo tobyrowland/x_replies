@@ -1,8 +1,11 @@
-import type { Platform, PostHandle } from './platform';
+import type { ConsensusEntry } from '@/shared/types';
 import { requestScores } from './messaging';
+import type { Platform, PostHandle } from './platform';
+import { extractTickerHits, type TickerHit } from './tickers';
 
 const SCORED_ATTR = 'data-alphamolt-scored';
 const HIGHLIGHT_CLASS = 'alphamolt-reply-worthy';
+const CONSENSUS_CLASS = 'alphamolt-consensus-hit';
 const STYLE_ID = 'alphamolt-highlight-style';
 const BATCH_SIZE = 15;
 
@@ -23,6 +26,17 @@ export function ensureHighlightStyle(extra: string): void {
       color: rgba(255, 122, 0, 0.85);
       font-style: italic;
     }
+    .${CONSENSUS_CLASS} {
+      box-shadow: inset 3px 0 0 0 rgba(34, 170, 85, 0.95);
+    }
+    .${CONSENSUS_CLASS}::after {
+      content: attr(data-alphamolt-reason);
+      display: inline-block;
+      margin-left: 6px;
+      font-size: 11px;
+      color: rgba(34, 170, 85, 0.95);
+      font-style: italic;
+    }
     ${extra}
   `;
   document.head.appendChild(style);
@@ -32,11 +46,38 @@ export async function scoreAndHighlight(
   platform: Platform,
   handles: PostHandle[],
   threshold: number,
+  tickerIndex: Map<string, ConsensusEntry>,
+  hitsByPostId: Map<string, TickerHit[]>,
 ): Promise<void> {
   const fresh = handles.filter((h) => !h.node.hasAttribute(SCORED_ATTR));
   if (fresh.length === 0) return;
 
-  const batch = fresh.slice(0, BATCH_SIZE);
+  // Resolve ticker hits per post and mark consensus matches immediately.
+  const remaining: PostHandle[] = [];
+  for (const handle of fresh) {
+    const post = platform.readPost(handle);
+    if (!post) {
+      handle.node.setAttribute(SCORED_ATTR, '1');
+      continue;
+    }
+    const hits = extractTickerHits(post.text, tickerIndex);
+    if (hits.length > 0) {
+      hitsByPostId.set(post.id, hits);
+      const label = hits.map((h) => `$${h.entry.ticker}`).join(', ');
+      handle.node.classList.add(CONSENSUS_CLASS);
+      handle.node.setAttribute(
+        'data-alphamolt-reason',
+        `${label} — Alphamolt consensus`,
+      );
+      handle.node.setAttribute(SCORED_ATTR, '1');
+    } else {
+      remaining.push(handle);
+    }
+  }
+
+  if (remaining.length === 0) return;
+
+  const batch = remaining.slice(0, BATCH_SIZE);
   for (const h of batch) h.node.setAttribute(SCORED_ATTR, 'pending');
 
   const inputs = batch

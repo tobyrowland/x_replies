@@ -1,5 +1,16 @@
+import {
+  CONSENSUS_ENDPOINT_DEFAULT,
+  getConsensus,
+  onConsensusChanged,
+} from '@/shared/consensus';
 import { DEFAULT_SETTINGS, getSettings, saveSettings } from '@/shared/storage';
-import type { Settings } from '@/shared/types';
+import type {
+  BackgroundResponse,
+  ConsensusCache,
+  RefreshConsensusRequest,
+  RefreshConsensusResponse,
+  Settings,
+} from '@/shared/types';
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -15,6 +26,8 @@ const enableReddit = $<HTMLInputElement>('enableReddit');
 const threshold = $<HTMLInputElement>('threshold');
 const thresholdValue = $<HTMLSpanElement>('thresholdValue');
 const status = $<HTMLSpanElement>('status');
+const consensusEndpoint = $<HTMLInputElement>('consensusEndpoint');
+const consensusStatus = $<HTMLDivElement>('consensusStatus');
 
 void load();
 
@@ -23,8 +36,17 @@ function setStatus(text: string, kind: 'ok' | 'err' | '' = ''): void {
   status.className = `status${kind ? ' ' + kind : ''}`;
 }
 
+function renderConsensus(cache: ConsensusCache | null): void {
+  if (!cache || cache.fetchedAt === 0) {
+    consensusStatus.textContent = 'Consensus list: not loaded yet.';
+    return;
+  }
+  const when = new Date(cache.fetchedAt).toLocaleString();
+  consensusStatus.textContent = `Consensus list: ${cache.entries.length} tickers, last fetched ${when}.`;
+}
+
 async function load(): Promise<void> {
-  const s = await getSettings();
+  const [s, cache] = await Promise.all([getSettings(), getConsensus()]);
   apiKeyInput.value = s.apiKey;
   voiceInput.value = s.voiceSamples;
   enableX.checked = s.enabledPlatforms.x;
@@ -32,11 +54,16 @@ async function load(): Promise<void> {
   enableReddit.checked = s.enabledPlatforms.reddit;
   threshold.value = String(s.highlightThreshold);
   thresholdValue.textContent = s.highlightThreshold.toFixed(2);
+  consensusEndpoint.value = s.consensusEndpoint ?? '';
+  consensusEndpoint.placeholder = CONSENSUS_ENDPOINT_DEFAULT;
+  renderConsensus(cache);
 }
 
 threshold.addEventListener('input', () => {
   thresholdValue.textContent = parseFloat(threshold.value).toFixed(2);
 });
+
+onConsensusChanged((cache) => renderConsensus(cache));
 
 $('save').addEventListener('click', async () => {
   const next: Settings = {
@@ -50,6 +77,7 @@ $('save').addEventListener('click', async () => {
     },
     highlightThreshold: parseFloat(threshold.value),
     alphamoltPagesOverride: null,
+    consensusEndpoint: consensusEndpoint.value.trim() || null,
   };
   await saveSettings(next);
   setStatus('Saved.', 'ok');
@@ -85,5 +113,21 @@ $('test').addEventListener('click', async () => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     setStatus(`Failed: ${msg}`, 'err');
+  }
+});
+
+$('refreshConsensus').addEventListener('click', async () => {
+  setStatus('Refreshing consensus…');
+  try {
+    const res = (await chrome.runtime.sendMessage({
+      type: 'refreshConsensus',
+    } satisfies RefreshConsensusRequest)) as BackgroundResponse;
+    if (!res.ok) throw new Error(res.error);
+    const data = res.data as RefreshConsensusResponse;
+    renderConsensus(data.cache);
+    setStatus(`Loaded ${data.cache.entries.length} tickers.`, 'ok');
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    setStatus(`Refresh failed: ${msg}`, 'err');
   }
 });

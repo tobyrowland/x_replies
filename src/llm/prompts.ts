@@ -1,4 +1,9 @@
-import type { AlphamoltPage, PlatformName, Post } from '@/shared/types';
+import type {
+  AlphamoltPage,
+  ConsensusEntry,
+  PlatformName,
+  Post,
+} from '@/shared/types';
 
 const PLATFORM_LENGTH_RULES: Record<PlatformName, string> = {
   x: 'Hard limit: 280 characters. Aim for 240–270 to leave headroom. No hashtags. No emoji unless the voice samples use them.',
@@ -12,35 +17,65 @@ export interface DraftPromptInput {
   voiceSamples: string;
   alphamoltPages: AlphamoltPage[];
   post: Post;
+  tickerEntry?: ConsensusEntry;
 }
 
 export function buildDraftSystemPrompt({
   voiceSamples,
   alphamoltPages,
   post,
+  tickerEntry,
 }: DraftPromptInput): string {
   const samples = voiceSamples.trim()
     ? `Voice samples (study tone, cadence, vocabulary; do not copy phrasing):\n---\n${voiceSamples.trim()}\n---`
     : 'No voice samples provided. Default to a wry, terse, observational tone.';
 
-  const pages = alphamoltPages.length
-    ? JSON.stringify(alphamoltPages, null, 2)
-    : '[]';
-
-  return [
+  const sections: string[] = [
     "You are drafting a reply on behalf of a user who writes in the voice of Alphamolt. Match that voice tightly: cadence, diction, level of conviction, and use of hedging.",
     samples,
     `Platform: ${post.platform}. ${PLATFORM_LENGTH_RULES[post.platform]}`,
-    'Rules:',
-    '- Reply directly to the post. No throat-clearing ("Great point", "Interesting take", etc.).',
-    '- Never apologize, never moralize, never explain that you are an AI.',
-    '- One idea per reply. If you must hedge, hedge once.',
-    '- Plain ASCII quotes and dashes. No em-dash unless the voice samples use them.',
-    'Alphamolt pages you may reference:',
-    pages,
-    'If — and only if — exactly one of these pages is directly, substantively relevant to the reply you are drafting, embed its URL inline as a natural sentence. Do not shoehorn. If none fit, omit. Never include more than one Alphamolt URL.',
+    [
+      'Rules:',
+      '- Reply directly to the post. No throat-clearing ("Great point", "Interesting take", etc.).',
+      '- Never apologize, never moralize, never explain that you are an AI.',
+      '- One idea per reply. If you must hedge, hedge once.',
+      '- Plain ASCII quotes and dashes. No em-dash unless the voice samples use them.',
+    ].join('\n'),
+  ];
+
+  if (tickerEntry) {
+    sections.push(buildTickerBlock(tickerEntry));
+  } else {
+    const pages = alphamoltPages.length
+      ? JSON.stringify(alphamoltPages, null, 2)
+      : '[]';
+    sections.push(
+      `Alphamolt pages you may reference:\n${pages}`,
+      'If — and only if — exactly one of these pages is directly, substantively relevant to the reply you are drafting, embed its URL inline as a natural sentence. Do not shoehorn. If none fit, omit. Never include more than one Alphamolt URL.',
+    );
+  }
+
+  sections.push(
     'Output: the reply text only. No preamble, no quotes around it, no explanation.',
-  ].join('\n\n');
+  );
+
+  return sections.join('\n\n');
+}
+
+function buildTickerBlock(entry: ConsensusEntry): string {
+  const lines = [
+    `The user is replying to a post about ${entry.ticker} (${entry.name}), which is on Alphamolt's consensus list.`,
+    entry.thesis
+      ? `Alphamolt's stance on ${entry.ticker}: "${entry.thesis}"`
+      : `Alphamolt has a published view on ${entry.ticker} but no thesis blurb is available; stay generic about the company and let the link carry the weight.`,
+    'Ticker-reply rules (override the generic Alphamolt-link rules above):',
+    `- Embed the URL ${entry.url} exactly once, naturally inside a sentence. Not at the start, not bracketed, not labeled "link".`,
+    '- Be pithy. One tight beat. The reply should land like a contrarian aside, not a thesis.',
+    "- If the original post is bullish, the reply leans on Alphamolt's framing without flatly contradicting them. If bearish, same — surface the angle, don't argue.",
+    "- Do not paste the thesis verbatim. Compress it to a phrase or implication.",
+    '- Mention the ticker (with $ if natural) but do not stack multiple ticker symbols.',
+  ];
+  return lines.join('\n');
 }
 
 export function buildDraftUserMessage(post: Post): string {

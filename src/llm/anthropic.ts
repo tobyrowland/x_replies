@@ -1,5 +1,6 @@
 import type {
   AlphamoltPage,
+  ConsensusEntry,
   Post,
   PostScore,
   ScorePostsRequest,
@@ -63,11 +64,13 @@ export async function draftReply(params: {
   voiceSamples: string;
   alphamoltPages: AlphamoltPage[];
   post: Post;
+  tickerEntry?: ConsensusEntry;
 }): Promise<string> {
   const system = buildDraftSystemPrompt({
     voiceSamples: params.voiceSamples,
     alphamoltPages: params.alphamoltPages,
     post: params.post,
+    tickerEntry: params.tickerEntry,
   });
   const user = buildDraftUserMessage(params.post);
   return callMessages({
