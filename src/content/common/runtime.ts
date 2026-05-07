@@ -1,20 +1,42 @@
 import {
+  buildAliasIndex,
+  EMPTY_AGENTS_CACHE,
+  getAgents,
+  onAgentsChanged,
+  type AliasIndex,
+} from '@/shared/agents';
+import {
+  buildCompanyIndex,
+  EMPTY_COMPANIES_CACHE,
+  getCompanies,
+  onCompaniesChanged,
+} from '@/shared/companies';
+import {
   buildTickerIndex,
   EMPTY_CACHE,
   getConsensus,
   onConsensusChanged,
 } from '@/shared/consensus';
 import { getSettings, isPlatformEnabled, onSettingsChanged } from '@/shared/storage';
-import type { ConsensusCache, ConsensusEntry, Settings } from '@/shared/types';
+import type {
+  AgentsCache,
+  CompaniesCache,
+  CompanyEntry,
+  ConsensusCache,
+  ConsensusEntry,
+  Settings,
+  TickerHit,
+} from '@/shared/types';
 import { ensureHighlightStyle, scoreAndHighlight } from './highlighter';
 import { injectDraftButtons } from './inject-button';
 import { observeFeed } from './observer';
 import type { Platform } from './platform';
-import type { TickerHit } from './tickers';
 
 export function runPlatform(platform: Platform): void {
   let settings: Settings | null = null;
-  let tickerIndex: Map<string, ConsensusEntry> = new Map();
+  let consensusIndex: Map<string, ConsensusEntry> = new Map();
+  let companyIndex: Map<string, CompanyEntry> = new Map();
+  let agentsIndex: AliasIndex = { byNormalizedAlias: new Map() };
   let stopObserver: (() => void) | null = null;
   const hitsByPostId = new Map<string, TickerHit[]>();
 
@@ -29,11 +51,16 @@ export function runPlatform(platform: Platform): void {
         platform,
         handles,
         settings.highlightThreshold,
-        tickerIndex,
+        consensusIndex,
+        companyIndex,
         hitsByPostId,
       );
     }
-    injectDraftButtons(platform, handles, hitsByPostId);
+    injectDraftButtons(platform, handles, {
+      consensusIndex,
+      companyIndex,
+      agentsIndex,
+    });
   };
 
   const start = () => {
@@ -47,10 +74,22 @@ export function runPlatform(platform: Platform): void {
     stopObserver = null;
   };
 
-  void Promise.all([getSettings(), getConsensus()]).then(
-    ([s, cache]: [Settings, ConsensusCache]) => {
+  void Promise.all([
+    getSettings(),
+    getConsensus(),
+    getCompanies(),
+    getAgents(),
+  ]).then(
+    ([s, consensus, companies, agents]: [
+      Settings,
+      ConsensusCache,
+      CompaniesCache,
+      AgentsCache,
+    ]) => {
       settings = s;
-      tickerIndex = buildTickerIndex(cache ?? EMPTY_CACHE);
+      consensusIndex = buildTickerIndex(consensus ?? EMPTY_CACHE);
+      companyIndex = buildCompanyIndex(companies ?? EMPTY_COMPANIES_CACHE);
+      agentsIndex = buildAliasIndex(agents ?? EMPTY_AGENTS_CACHE);
       start();
     },
   );
@@ -66,7 +105,15 @@ export function runPlatform(platform: Platform): void {
   });
 
   onConsensusChanged((cache) => {
-    tickerIndex = buildTickerIndex(cache);
+    consensusIndex = buildTickerIndex(cache);
+    tick();
+  });
+  onCompaniesChanged((cache) => {
+    companyIndex = buildCompanyIndex(cache);
+    tick();
+  });
+  onAgentsChanged((cache) => {
+    agentsIndex = buildAliasIndex(cache);
     tick();
   });
 }

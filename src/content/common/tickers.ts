@@ -1,4 +1,4 @@
-import type { ConsensusEntry } from '@/shared/types';
+import type { CompanyEntry, ConsensusEntry, TickerHit } from '@/shared/types';
 
 const STOP_LIST = new Set<string>([
   'AI',
@@ -39,16 +39,15 @@ const STOP_LIST = new Set<string>([
 const TICKER_REGEX = /\$([A-Z]{1,5})\b|\b([A-Z]{2,5})\b/g;
 const MAX_HITS_PER_POST = 2;
 
-export interface TickerHit {
-  entry: ConsensusEntry;
-  viaCashtag: boolean;
-}
+export type { TickerHit };
 
 export function extractTickerHits(
   text: string,
-  index: Map<string, ConsensusEntry>,
+  consensusIndex: Map<string, ConsensusEntry>,
+  companyIndex: Map<string, CompanyEntry>,
 ): TickerHit[] {
-  if (!text || index.size === 0) return [];
+  if (!text) return [];
+  if (consensusIndex.size === 0 && companyIndex.size === 0) return [];
   const seen = new Map<string, TickerHit>();
   TICKER_REGEX.lastIndex = 0;
   let match: RegExpExecArray | null;
@@ -57,16 +56,23 @@ export function extractTickerHits(
     const bare = match[2];
     const symbol = (cashtag ?? bare ?? '').toUpperCase();
     if (!symbol) continue;
-    const entry = index.get(symbol);
-    if (!entry) continue;
     if (!cashtag && STOP_LIST.has(symbol)) continue;
+
+    const consensusEntry = consensusIndex.get(symbol);
+    const companyEntry = companyIndex.get(symbol);
+    if (!consensusEntry && !companyEntry) continue;
+
+    const tier: TickerHit['tier'] = consensusEntry ? 'consensus' : 'covered';
     const existing = seen.get(symbol);
     const viaCashtag = Boolean(cashtag) || Boolean(existing?.viaCashtag);
-    seen.set(symbol, { entry, viaCashtag });
-    if (seen.size >= MAX_HITS_PER_POST && !cashtag) {
-      // Allow cashtag matches to upgrade an existing entry, but stop searching otherwise.
-      break;
-    }
+    const hit: TickerHit = {
+      symbol,
+      tier,
+      viaCashtag,
+    };
+    if (consensusEntry) hit.consensusEntry = consensusEntry;
+    if (companyEntry) hit.companyEntry = companyEntry;
+    seen.set(symbol, hit);
   }
   return Array.from(seen.values()).slice(0, MAX_HITS_PER_POST);
 }

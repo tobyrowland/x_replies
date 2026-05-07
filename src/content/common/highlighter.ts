@@ -1,8 +1,8 @@
-import type { ConsensusEntry } from '@/shared/types';
+import type { CompanyEntry, ConsensusEntry, TickerHit } from '@/shared/types';
 import { requestScores } from './messaging';
 import { COMPOSE_FLAG } from './markers';
 import type { Platform, PostHandle } from './platform';
-import { extractTickerHits, type TickerHit } from './tickers';
+import { extractTickerHits } from './tickers';
 
 const SCORED_ATTR = 'data-alphamolt-scored';
 const HIGHLIGHT_CLASS = 'alphamolt-reply-worthy';
@@ -47,13 +47,14 @@ export async function scoreAndHighlight(
   platform: Platform,
   handles: PostHandle[],
   threshold: number,
-  tickerIndex: Map<string, ConsensusEntry>,
+  consensusIndex: Map<string, ConsensusEntry>,
+  companyIndex: Map<string, CompanyEntry>,
   hitsByPostId: Map<string, TickerHit[]>,
 ): Promise<void> {
   const fresh = handles.filter((h) => !h.node.hasAttribute(SCORED_ATTR));
   if (fresh.length === 0) return;
 
-  // Resolve ticker hits per post and mark consensus matches immediately.
+  // Resolve ticker hits per post; only consensus hits short-circuit scoring.
   const remaining: PostHandle[] = [];
   for (const handle of fresh) {
     const post = platform.readPost(handle);
@@ -61,13 +62,13 @@ export async function scoreAndHighlight(
       handle.node.setAttribute(SCORED_ATTR, '1');
       continue;
     }
-    const hits = extractTickerHits(post.text, tickerIndex);
-    if (hits.length > 0) {
-      hitsByPostId.set(post.id, hits);
-      // Only stamp the visual accent on actual feed posts, not on compose
-      // handles (which would render the label inside the composer).
+    const hits = extractTickerHits(post.text, consensusIndex, companyIndex);
+    if (hits.length > 0) hitsByPostId.set(post.id, hits);
+
+    const consensusHits = hits.filter((h) => h.tier === 'consensus');
+    if (consensusHits.length > 0) {
       if (!handle.node.hasAttribute(COMPOSE_FLAG)) {
-        const label = hits.map((h) => `$${h.entry.ticker}`).join(', ');
+        const label = consensusHits.map((h) => `$${h.symbol}`).join(', ');
         handle.node.classList.add(CONSENSUS_CLASS);
         handle.node.setAttribute(
           'data-alphamolt-reason',

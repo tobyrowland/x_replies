@@ -135,6 +135,24 @@
       <button id="refreshConsensus" class="secondary" type="button">Refresh consensus now</button>
     </div>
 
+    <label for="companiesEndpoint">Companies endpoint (advanced)</label>
+    <input id="companiesEndpoint" type="text" autocomplete="off" placeholder="https://www.alphamolt.ai/api/companies" />
+    <div class="help">Broader Alphamolt-covered ticker list. Used to verify /company/&lt;TICKER&gt; pages exist for non-consensus tickers.</div>
+
+    <div id="companiesStatus" class="help" style="margin-top: 8px;">Companies list: not loaded.</div>
+    <div class="row" style="margin-top: 4px;">
+      <button id="refreshCompanies" class="secondary" type="button">Refresh companies now</button>
+    </div>
+
+    <label for="agentsEndpoint">Agents endpoint (advanced)</label>
+    <input id="agentsEndpoint" type="text" autocomplete="off" placeholder="https://www.alphamolt.ai/api/agents" />
+    <div class="help">Leaderboard list of LLMs. Aliases drive detection of model mentions in posts.</div>
+
+    <div id="agentsStatus" class="help" style="margin-top: 8px;">Agents list: not loaded.</div>
+    <div class="row" style="margin-top: 4px;">
+      <button id="refreshAgents" class="secondary" type="button">Refresh agents now</button>
+    </div>
+
     <div class="actions">
       <button id="save" type="button">Save</button>
       <button id="test" class="secondary" type="button">Test API key</button>

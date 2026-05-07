@@ -1,15 +1,29 @@
 import {
+  AGENTS_ENDPOINT_DEFAULT,
+  getAgents,
+  onAgentsChanged,
+} from '@/shared/agents';
+import {
+  COMPANIES_ENDPOINT_DEFAULT,
+  getCompanies,
+  onCompaniesChanged,
+} from '@/shared/companies';
+import {
   CONSENSUS_ENDPOINT_DEFAULT,
   getConsensus,
   onConsensusChanged,
 } from '@/shared/consensus';
 import { DEFAULT_SETTINGS, getSettings, saveSettings } from '@/shared/storage';
 import { DEFAULT_RULES } from '@/llm/prompts';
+import {
+  requestRefreshAgents,
+  requestRefreshCompanies,
+  requestRefreshConsensus,
+} from '@/content/common/messaging';
 import type {
-  BackgroundResponse,
+  AgentsCache,
+  CompaniesCache,
   ConsensusCache,
-  RefreshConsensusRequest,
-  RefreshConsensusResponse,
   Settings,
 } from '@/shared/types';
 
@@ -28,8 +42,13 @@ const enableReddit = $<HTMLInputElement>('enableReddit');
 const threshold = $<HTMLInputElement>('threshold');
 const thresholdValue = $<HTMLSpanElement>('thresholdValue');
 const status = $<HTMLSpanElement>('status');
+
 const consensusEndpoint = $<HTMLInputElement>('consensusEndpoint');
 const consensusStatus = $<HTMLDivElement>('consensusStatus');
+const companiesEndpoint = $<HTMLInputElement>('companiesEndpoint');
+const companiesStatus = $<HTMLDivElement>('companiesStatus');
+const agentsEndpoint = $<HTMLInputElement>('agentsEndpoint');
+const agentsStatus = $<HTMLDivElement>('agentsStatus');
 
 rulesInput.style.minHeight = '220px';
 rulesInput.style.fontFamily = 'ui-monospace, SFMono-Regular, Menlo, monospace';
@@ -43,16 +62,38 @@ function setStatus(text: string, kind: 'ok' | 'err' | '' = ''): void {
 }
 
 function renderConsensus(cache: ConsensusCache | null): void {
+  renderCacheStatus(consensusStatus, cache, 'Consensus list', 'tickers');
+}
+
+function renderCompanies(cache: CompaniesCache | null): void {
+  renderCacheStatus(companiesStatus, cache, 'Companies list', 'tickers');
+}
+
+function renderAgents(cache: AgentsCache | null): void {
+  renderCacheStatus(agentsStatus, cache, 'Agents list', 'agents');
+}
+
+function renderCacheStatus(
+  el: HTMLElement,
+  cache: { entries: unknown[]; fetchedAt: number } | null,
+  label: string,
+  unit: string,
+): void {
   if (!cache || cache.fetchedAt === 0) {
-    consensusStatus.textContent = 'Consensus list: not loaded yet.';
+    el.textContent = `${label}: not loaded yet.`;
     return;
   }
   const when = new Date(cache.fetchedAt).toLocaleString();
-  consensusStatus.textContent = `Consensus list: ${cache.entries.length} tickers, last fetched ${when}.`;
+  el.textContent = `${label}: ${cache.entries.length} ${unit}, last fetched ${when}.`;
 }
 
 async function load(): Promise<void> {
-  const [s, cache] = await Promise.all([getSettings(), getConsensus()]);
+  const [s, consensus, companies, agents] = await Promise.all([
+    getSettings(),
+    getConsensus(),
+    getCompanies(),
+    getAgents(),
+  ]);
   apiKeyInput.value = s.apiKey;
   voiceInput.value = s.voiceSamples;
   rulesInput.value = s.systemPromptRules ?? DEFAULT_RULES;
@@ -63,7 +104,13 @@ async function load(): Promise<void> {
   thresholdValue.textContent = s.highlightThreshold.toFixed(2);
   consensusEndpoint.value = s.consensusEndpoint ?? '';
   consensusEndpoint.placeholder = CONSENSUS_ENDPOINT_DEFAULT;
-  renderConsensus(cache);
+  companiesEndpoint.value = s.companiesEndpoint ?? '';
+  companiesEndpoint.placeholder = COMPANIES_ENDPOINT_DEFAULT;
+  agentsEndpoint.value = s.agentsEndpoint ?? '';
+  agentsEndpoint.placeholder = AGENTS_ENDPOINT_DEFAULT;
+  renderConsensus(consensus);
+  renderCompanies(companies);
+  renderAgents(agents);
 }
 
 threshold.addEventListener('input', () => {
@@ -71,6 +118,8 @@ threshold.addEventListener('input', () => {
 });
 
 onConsensusChanged((cache) => renderConsensus(cache));
+onCompaniesChanged((cache) => renderCompanies(cache));
+onAgentsChanged((cache) => renderAgents(cache));
 
 $('save').addEventListener('click', async () => {
   const next: Settings = {
@@ -86,6 +135,8 @@ $('save').addEventListener('click', async () => {
     highlightThreshold: parseFloat(threshold.value),
     alphamoltPagesOverride: null,
     consensusEndpoint: consensusEndpoint.value.trim() || null,
+    companiesEndpoint: companiesEndpoint.value.trim() || null,
+    agentsEndpoint: agentsEndpoint.value.trim() || null,
   };
   await saveSettings(next);
   setStatus('Saved.', 'ok');
@@ -132,13 +183,33 @@ $('test').addEventListener('click', async () => {
 $('refreshConsensus').addEventListener('click', async () => {
   setStatus('Refreshing consensus…');
   try {
-    const res = (await chrome.runtime.sendMessage({
-      type: 'refreshConsensus',
-    } satisfies RefreshConsensusRequest)) as BackgroundResponse;
-    if (!res.ok) throw new Error(res.error);
-    const data = res.data as RefreshConsensusResponse;
-    renderConsensus(data.cache);
-    setStatus(`Loaded ${data.cache.entries.length} tickers.`, 'ok');
+    const { cache } = await requestRefreshConsensus();
+    renderConsensus(cache);
+    setStatus(`Loaded ${cache.entries.length} tickers.`, 'ok');
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    setStatus(`Refresh failed: ${msg}`, 'err');
+  }
+});
+
+$('refreshCompanies').addEventListener('click', async () => {
+  setStatus('Refreshing companies…');
+  try {
+    const { cache } = await requestRefreshCompanies();
+    renderCompanies(cache);
+    setStatus(`Loaded ${cache.entries.length} companies.`, 'ok');
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    setStatus(`Refresh failed: ${msg}`, 'err');
+  }
+});
+
+$('refreshAgents').addEventListener('click', async () => {
+  setStatus('Refreshing agents…');
+  try {
+    const { cache } = await requestRefreshAgents();
+    renderAgents(cache);
+    setStatus(`Loaded ${cache.entries.length} agents.`, 'ok');
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     setStatus(`Refresh failed: ${msg}`, 'err');

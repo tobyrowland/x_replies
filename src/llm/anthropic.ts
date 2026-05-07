@@ -1,7 +1,7 @@
 import type {
   AlphamoltPage,
-  ConsensusEntry,
   Post,
+  PostClass,
   PostScore,
   ScorePostsRequest,
 } from '@/shared/types';
@@ -64,7 +64,7 @@ export async function draftReplies(params: {
   voiceSamples: string;
   alphamoltPages: AlphamoltPage[];
   post: Post;
-  tickerEntry?: ConsensusEntry;
+  postClass: PostClass;
   rules?: string;
   candidateCount?: number;
 }): Promise<string[]> {
@@ -73,7 +73,7 @@ export async function draftReplies(params: {
     voiceSamples: params.voiceSamples,
     alphamoltPages: params.alphamoltPages,
     post: params.post,
-    tickerEntry: params.tickerEntry,
+    postClass: params.postClass,
     rules: params.rules,
     candidateCount,
   });

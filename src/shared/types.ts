@@ -30,6 +30,33 @@ export interface ConsensusCache {
   source: string;
 }
 
+export interface CompanyEntry {
+  ticker: string;
+  name?: string;
+  url: string;
+}
+
+export interface CompaniesCache {
+  entries: CompanyEntry[];
+  fetchedAt: number;
+  source: string;
+}
+
+export interface AgentEntry {
+  slug: string;
+  name: string;
+  url: string;
+  aliases: string[];
+  rank?: number;
+  thesis?: string;
+}
+
+export interface AgentsCache {
+  entries: AgentEntry[];
+  fetchedAt: number;
+  source: string;
+}
+
 export interface Settings {
   apiKey: string;
   voiceSamples: string;
@@ -38,12 +65,34 @@ export interface Settings {
   highlightThreshold: number;
   alphamoltPagesOverride: AlphamoltPage[] | null;
   consensusEndpoint: string | null;
+  companiesEndpoint: string | null;
+  agentsEndpoint: string | null;
 }
+
+export interface TickerHit {
+  symbol: string;
+  tier: 'consensus' | 'covered' | 'unknown';
+  consensusEntry?: ConsensusEntry;
+  companyEntry?: CompanyEntry;
+  viaCashtag: boolean;
+}
+
+export interface AgentHit {
+  entry: AgentEntry;
+  matchedAlias: string;
+}
+
+export type PostClass =
+  | { kind: 'consensus-ticker'; primary: ConsensusEntry; hits: TickerHit[] }
+  | { kind: 'covered-ticker'; primary: CompanyEntry; hits: TickerHit[] }
+  | { kind: 'agent'; primary: AgentEntry; hits: AgentHit[] }
+  | { kind: 'general-ai-finance' }
+  | { kind: 'none' };
 
 export interface DraftReplyRequest {
   type: 'draftReply';
   post: Post;
-  tickerEntry?: ConsensusEntry;
+  postClass: PostClass;
   candidateCount?: number;
 }
 
@@ -69,18 +118,38 @@ export interface ScorePostsResponse {
 export interface RefreshConsensusRequest {
   type: 'refreshConsensus';
 }
-
 export interface RefreshConsensusResponse {
   cache: ConsensusCache;
+}
+
+export interface RefreshCompaniesRequest {
+  type: 'refreshCompanies';
+}
+export interface RefreshCompaniesResponse {
+  cache: CompaniesCache;
+}
+
+export interface RefreshAgentsRequest {
+  type: 'refreshAgents';
+}
+export interface RefreshAgentsResponse {
+  cache: AgentsCache;
 }
 
 export type BackgroundRequest =
   | DraftReplyRequest
   | ScorePostsRequest
-  | RefreshConsensusRequest;
+  | RefreshConsensusRequest
+  | RefreshCompaniesRequest
+  | RefreshAgentsRequest;
 export type BackgroundResponse =
   | {
       ok: true;
-      data: DraftReplyResponse | ScorePostsResponse | RefreshConsensusResponse;
+      data:
+        | DraftReplyResponse
+        | ScorePostsResponse
+        | RefreshConsensusResponse
+        | RefreshCompaniesResponse
+        | RefreshAgentsResponse;
     }
   | { ok: false; error: string };

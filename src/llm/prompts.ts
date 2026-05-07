@@ -1,8 +1,13 @@
+import { LEADERBOARD_URL } from '@/shared/agents';
+import { COMPANY_PAGE_PREFIX } from '@/shared/consensus';
 import type {
+  AgentEntry,
   AlphamoltPage,
+  CompanyEntry,
   ConsensusEntry,
   PlatformName,
   Post,
+  PostClass,
 } from '@/shared/types';
 
 const PLATFORM_LENGTH_RULES: Record<PlatformName, string> = {
@@ -27,19 +32,13 @@ export interface DraftPromptInput {
   voiceSamples: string;
   alphamoltPages: AlphamoltPage[];
   post: Post;
-  tickerEntry?: ConsensusEntry;
+  postClass: PostClass;
   rules?: string;
   candidateCount: number;
 }
 
-export function buildDraftSystemPrompt({
-  voiceSamples,
-  alphamoltPages,
-  post,
-  tickerEntry,
-  rules,
-  candidateCount,
-}: DraftPromptInput): string {
+export function buildDraftSystemPrompt(input: DraftPromptInput): string {
+  const { voiceSamples, alphamoltPages, post, postClass, rules, candidateCount } = input;
   const samples = voiceSamples.trim()
     ? `Voice samples (study tone, cadence, vocabulary; do not copy phrasing):\n---\n${voiceSamples.trim()}\n---`
     : 'No voice samples provided. Default to a wry, terse, observational tone.';
@@ -51,19 +50,8 @@ export function buildDraftSystemPrompt({
     samples,
     `Platform: ${post.platform}. ${PLATFORM_LENGTH_RULES[post.platform]}`,
     rulesBlock,
+    buildClassBlock(postClass, alphamoltPages),
   ];
-
-  if (tickerEntry) {
-    sections.push(buildTickerBlock(tickerEntry));
-  } else {
-    const pages = alphamoltPages.length
-      ? JSON.stringify(alphamoltPages, null, 2)
-      : '[]';
-    sections.push(
-      `Alphamolt pages you may reference:\n${pages}`,
-      'If — and only if — exactly one of these pages is directly, substantively relevant to the reply you are drafting, embed its URL inline as a natural sentence. Do not shoehorn. If none fit, omit. Never include more than one Alphamolt URL.',
-    );
-  }
 
   const n = Math.max(1, Math.min(candidateCount, 5));
   sections.push(
@@ -73,20 +61,92 @@ export function buildDraftSystemPrompt({
   return sections.join('\n\n');
 }
 
-function buildTickerBlock(entry: ConsensusEntry): string {
-  const lines = [
+function buildClassBlock(
+  postClass: PostClass,
+  alphamoltPages: AlphamoltPage[],
+): string {
+  switch (postClass.kind) {
+    case 'consensus-ticker':
+      return buildConsensusBlock(postClass.primary);
+    case 'covered-ticker':
+      return buildCoveredBlock(postClass.primary);
+    case 'agent':
+      return buildAgentBlock(postClass.primary);
+    case 'general-ai-finance':
+      return buildGeneralAiBlock();
+    case 'none':
+      return buildNoneBlock(alphamoltPages);
+  }
+}
+
+function buildConsensusBlock(entry: ConsensusEntry): string {
+  return [
     `The user is replying to a post about ${entry.ticker} (${entry.name}), which is on Alphamolt's consensus list.`,
     entry.thesis
       ? `Alphamolt's stance on ${entry.ticker}: "${entry.thesis}"`
       : `Alphamolt has a published view on ${entry.ticker} but no thesis blurb is available; stay generic about the company and let the link carry the weight.`,
-    'Ticker-reply rules (override the generic Alphamolt-link rules above):',
+    'Ticker-reply rules (override the generic Alphamolt-link rules below):',
     `- Embed the URL ${entry.url} exactly once, naturally inside a sentence. Not at the start, not bracketed, not labeled "link".`,
     '- One tight beat. The reply should land like a contrarian aside, not a thesis.',
     "- If the original post is bullish, the reply leans on Alphamolt's framing without flatly contradicting them. If bearish, same — surface the angle, don't argue.",
     '- Do not paste the thesis verbatim. Compress it to a phrase or implication.',
     '- Mention the ticker (with $ if natural) but do not stack multiple ticker symbols.',
+  ].join('\n');
+}
+
+function buildCoveredBlock(entry: CompanyEntry): string {
+  const url = entry.url || `${COMPANY_PAGE_PREFIX}${entry.ticker}`;
+  const name = entry.name ?? entry.ticker;
+  return [
+    `The user is replying to a post about ${entry.ticker} (${name}). Alphamolt covers this company but does not have a consensus thesis on it.`,
+    'Covered-ticker rules:',
+    '- Add value casually first — a small specific observation about the business, the setup, or the market reaction. Not a thesis.',
+    `- If a single tight angle on this company genuinely improves the reply, you may embed ${url} once, naturally inside a sentence. Otherwise omit the URL entirely.`,
+    '- When you do include the URL, do not preface with phrases like "see here" or "more at". Make the link incidental.',
+    '- Mention the ticker (with $ if natural) but do not stack multiple symbols.',
+    '- Do not invent specific numbers, ratios, or claims. Stay observational.',
+  ].join('\n');
+}
+
+function buildAgentBlock(entry: AgentEntry): string {
+  const lines = [
+    `The user is replying to a post about ${entry.name}. ${entry.name} is on Alphamolt's leaderboard${entry.rank !== undefined ? `, currently ranked #${entry.rank}` : ''}.`,
   ];
+  if (entry.thesis) {
+    lines.push(`Alphamolt's read on ${entry.name}'s investing style: "${entry.thesis}"`);
+  } else {
+    lines.push(`No specific style note is available for ${entry.name}; lean on the rank and the leaderboard framing.`);
+  }
+  lines.push(
+    'Agent-reply rules (override the generic Alphamolt-link rules below):',
+    '- Brief. Sometimes enigmatic — a hook that makes the reader want to click, not a summary.',
+    '- One tight beat. Don\'t explain the leaderboard; assume the reader can figure it out from the link.',
+    `- Embed ${entry.url} once, naturally. If you can\'t fit the agent-specific link, fall back to ${LEADERBOARD_URL} instead — but never include both.`,
+    '- Don\'t stack multiple model names. Don\'t evangelise. Don\'t post a benchmark number.',
+    `- It\'s fine to use the model\'s casual name (e.g. just "Gemini") rather than the full versioned form.`,
+  );
   return lines.join('\n');
+}
+
+function buildGeneralAiBlock(): string {
+  return [
+    'The post is a general one about LLMs / AI for finance, stock-picking, portfolio construction, or similar.',
+    'General-AI rules:',
+    '- Contribute substantively first. Make a real point, an observation, or a sharp question.',
+    '- Treat plugging Alphamolt as the exception, not the rule. Roughly 1 in 4 replies should end with a single brief gloss like "alphamolt.ai tracks how the major LLMs do this in practice" linking https://www.alphamolt.ai/. The other 3 should not link at all.',
+    '- When you do plug, the plug must feel incidental — never the load-bearing part of the reply.',
+    '- Do not name a specific model unless the post does first.',
+  ].join('\n');
+}
+
+function buildNoneBlock(alphamoltPages: AlphamoltPage[]): string {
+  const pages = alphamoltPages.length
+    ? JSON.stringify(alphamoltPages, null, 2)
+    : '[]';
+  return [
+    `Alphamolt pages you may reference:\n${pages}`,
+    'Generic-link rule: if — and only if — exactly one of these pages is directly, substantively relevant to the reply you are drafting, embed its URL inline as a natural sentence. Otherwise omit. Default to omitting; the bar is high. Never include more than one Alphamolt URL.',
+  ].join('\n\n');
 }
 
 export function buildDraftUserMessage(post: Post): string {

@@ -10,6 +10,8 @@ export const DEFAULT_SETTINGS: Settings = {
   highlightThreshold: 0.6,
   alphamoltPagesOverride: null,
   consensusEndpoint: null,
+  companiesEndpoint: null,
+  agentsEndpoint: null,
 };
 
 export async function getSettings(): Promise<Settings> {

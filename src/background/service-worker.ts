@@ -6,19 +6,43 @@ import {
   isConsensusAlarm,
   refreshConsensus,
 } from './consensus-fetcher';
+import {
+  ensureCompaniesAlarm,
+  isCompaniesAlarm,
+  refreshCompanies,
+} from './companies-fetcher';
+import {
+  ensureAgentsAlarm,
+  isAgentsAlarm,
+  refreshAgents,
+} from './agents-fetcher';
 import type {
   BackgroundRequest,
   BackgroundResponse,
   DraftReplyResponse,
+  RefreshAgentsResponse,
+  RefreshCompaniesResponse,
   RefreshConsensusResponse,
   ScorePostsResponse,
 } from '@/shared/types';
 
+function refreshAll(reason: string) {
+  void refreshConsensus().catch((err) =>
+    console.warn(`[alphamolt] ${reason} consensus fetch failed`, err),
+  );
+  void refreshCompanies().catch((err) =>
+    console.warn(`[alphamolt] ${reason} companies fetch failed`, err),
+  );
+  void refreshAgents().catch((err) =>
+    console.warn(`[alphamolt] ${reason} agents fetch failed`, err),
+  );
+}
+
 chrome.runtime.onInstalled.addListener((details) => {
   ensureConsensusAlarm();
-  void refreshConsensus().catch((err) =>
-    console.warn('[alphamolt] initial consensus fetch failed', err),
-  );
+  ensureCompaniesAlarm();
+  ensureAgentsAlarm();
+  refreshAll('initial');
   if (details.reason === 'install') {
     chrome.runtime.openOptionsPage();
   }
@@ -26,16 +50,25 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 chrome.runtime.onStartup.addListener(() => {
   ensureConsensusAlarm();
-  void refreshConsensus().catch((err) =>
-    console.warn('[alphamolt] startup consensus fetch failed', err),
-  );
+  ensureCompaniesAlarm();
+  ensureAgentsAlarm();
+  refreshAll('startup');
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (!isConsensusAlarm(alarm.name)) return;
-  void refreshConsensus().catch((err) =>
-    console.warn('[alphamolt] scheduled consensus fetch failed', err),
-  );
+  if (isConsensusAlarm(alarm.name)) {
+    void refreshConsensus().catch((err) =>
+      console.warn('[alphamolt] scheduled consensus fetch failed', err),
+    );
+  } else if (isCompaniesAlarm(alarm.name)) {
+    void refreshCompanies().catch((err) =>
+      console.warn('[alphamolt] scheduled companies fetch failed', err),
+    );
+  } else if (isAgentsAlarm(alarm.name)) {
+    void refreshAgents().catch((err) =>
+      console.warn('[alphamolt] scheduled agents fetch failed', err),
+    );
+  }
 });
 
 chrome.action.onClicked.addListener(() => {
@@ -57,12 +90,23 @@ chrome.runtime.onMessage.addListener(
 
 async function handleMessage(
   message: unknown,
-): Promise<DraftReplyResponse | ScorePostsResponse | RefreshConsensusResponse> {
+): Promise<
+  | DraftReplyResponse
+  | ScorePostsResponse
+  | RefreshConsensusResponse
+  | RefreshCompaniesResponse
+  | RefreshAgentsResponse
+> {
   const req = message as BackgroundRequest;
 
   if (req.type === 'refreshConsensus') {
-    const cache = await refreshConsensus();
-    return { cache };
+    return { cache: await refreshConsensus() };
+  }
+  if (req.type === 'refreshCompanies') {
+    return { cache: await refreshCompanies() };
+  }
+  if (req.type === 'refreshAgents') {
+    return { cache: await refreshAgents() };
   }
 
   const settings = await getSettings();
@@ -77,7 +121,7 @@ async function handleMessage(
       voiceSamples: settings.voiceSamples,
       alphamoltPages: pages,
       post: req.post,
-      tickerEntry: req.tickerEntry,
+      postClass: req.postClass,
       rules: settings.systemPromptRules ?? undefined,
       candidateCount: req.candidateCount,
     });
