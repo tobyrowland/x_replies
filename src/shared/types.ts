@@ -16,17 +16,33 @@ export interface AlphamoltPage {
   summary: string;
 }
 
+export interface ConsensusEntry {
+  ticker: string;
+  name: string;
+  url: string;
+  thesis?: string;
+  updatedAt?: string;
+}
+
+export interface ConsensusCache {
+  entries: ConsensusEntry[];
+  fetchedAt: number;
+  source: string;
+}
+
 export interface Settings {
   apiKey: string;
   voiceSamples: string;
   enabledPlatforms: Record<PlatformName, boolean>;
   highlightThreshold: number;
   alphamoltPagesOverride: AlphamoltPage[] | null;
+  consensusEndpoint: string | null;
 }
 
 export interface DraftReplyRequest {
   type: 'draftReply';
   post: Post;
+  tickerEntry?: ConsensusEntry;
 }
 
 export interface DraftReplyResponse {
@@ -48,7 +64,21 @@ export interface ScorePostsResponse {
   scores: PostScore[];
 }
 
-export type BackgroundRequest = DraftReplyRequest | ScorePostsRequest;
+export interface RefreshConsensusRequest {
+  type: 'refreshConsensus';
+}
+
+export interface RefreshConsensusResponse {
+  cache: ConsensusCache;
+}
+
+export type BackgroundRequest =
+  | DraftReplyRequest
+  | ScorePostsRequest
+  | RefreshConsensusRequest;
 export type BackgroundResponse =
-  | { ok: true; data: DraftReplyResponse | ScorePostsResponse }
+  | {
+      ok: true;
+      data: DraftReplyResponse | ScorePostsResponse | RefreshConsensusResponse;
+    }
   | { ok: false; error: string };
