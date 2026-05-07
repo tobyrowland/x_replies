@@ -6,9 +6,19 @@ import type { Post } from '@/shared/types';
 const ID_ATTR = 'data-alphamolt-id';
 const COMPOSE_FLAG = 'data-alphamolt-r-compose';
 const POST_REF_ATTR = 'data-alphamolt-r-post-ref';
-const SUBMIT_LABELS = new Set(['Comment', 'Reply', 'Post', 'Save']);
+const WRAP_ATTR = 'data-alphamolt-r-wrap';
 
 const isOldReddit = location.host === 'old.reddit.com';
+
+const HOST_SELECTORS = [
+  'comment-composer-host',
+  'shreddit-composer',
+  'comment-composer',
+  'reddit-composer',
+  'faceplate-textarea-input',
+  '[data-testid="comment-composer-host"]',
+  '[data-testid*="composer" i]',
+];
 
 const redditPlatform: Platform = {
   name: 'reddit',
@@ -47,8 +57,6 @@ function isVisible(el: Element | null): boolean {
   return el.offsetParent !== null || getComputedStyle(el).position === 'fixed';
 }
 
-// ---- New Reddit (Shreddit) -------------------------------------------------
-
 function ensureId(node: HTMLElement, prefix: string, i: number): string {
   let id = node.getAttribute(ID_ATTR);
   if (!id) {
@@ -63,30 +71,43 @@ function ensureId(node: HTMLElement, prefix: string, i: number): string {
   return id;
 }
 
+// ---- New Reddit (Shreddit) -------------------------------------------------
+
+let warnedNoComposer = false;
+
 function findShredditPosts(root: ParentNode): PostHandle[] {
   const handles: PostHandle[] = [];
 
-  // Compose anchors first — these are where the button gets injected.
-  const composerRows = findShredditComposerRows(root);
-  for (const [i, row] of composerRows.entries()) {
-    let id = row.getAttribute(ID_ATTR);
-    if (!id) {
-      id = `r-compose-${Date.now()}-${i}`;
-      row.setAttribute(ID_ATTR, id);
+  const hosts = findShredditComposerHosts(root);
+  if (hosts.length === 0 && !warnedNoComposer) {
+    // Only warn after we know the page is loaded (some posts present).
+    if (root.querySelector('shreddit-post')) {
+      warnedNoComposer = true;
+      console.warn(
+        '[alphamolt] Reddit: could not locate a comment composer host. Tried selectors:',
+        HOST_SELECTORS,
+      );
     }
-    if (!row.hasAttribute(COMPOSE_FLAG)) {
-      row.setAttribute(COMPOSE_FLAG, '1');
-      const post = findRelatedShredditPost(row);
-      if (post) {
-        const postId = ensureId(post, 'r', handles.length);
-        row.setAttribute(POST_REF_ATTR, postId);
-      }
-    }
-    handles.push({ node: row, id });
   }
 
-  // Posts and comments — for the highlighter only (findShredditAnchor returns
-  // null for these so no inline button is injected).
+  for (const [i, host] of hosts.entries()) {
+    let id = host.getAttribute(ID_ATTR);
+    if (!id) {
+      id = `r-compose-${Date.now()}-${i}`;
+      host.setAttribute(ID_ATTR, id);
+    }
+    if (!host.hasAttribute(COMPOSE_FLAG)) {
+      host.setAttribute(COMPOSE_FLAG, '1');
+      const post = findRelatedShredditPost(host);
+      if (post) {
+        const postId = ensureId(post, 'r-post', i);
+        host.setAttribute(POST_REF_ATTR, postId);
+      }
+    }
+    handles.push({ node: host, id });
+  }
+
+  // Posts and comments — for the highlighter only.
   const things = Array.from(
     root.querySelectorAll<HTMLElement>(
       'shreddit-post, shreddit-comment, article[data-testid="post-container"]',
@@ -100,53 +121,43 @@ function findShredditPosts(root: ParentNode): PostHandle[] {
   return handles;
 }
 
-function findShredditComposerRows(root: ParentNode): HTMLElement[] {
-  const rows = new Set<HTMLElement>();
+function findShredditComposerHosts(root: ParentNode): HTMLElement[] {
+  const seen = new Set<HTMLElement>();
+  const out: HTMLElement[] = [];
 
-  // Strategy A: explicit web-component selectors.
-  const hosts = root.querySelectorAll<HTMLElement>(
-    'shreddit-composer, comment-composer-host, [data-testid="comment-composer-host"]',
-  );
-  for (const host of hosts) {
-    if (!isVisible(host)) continue;
-    const row =
-      host.querySelector<HTMLElement>(
-        'faceplate-form-action-row, [data-testid="composer-actions"]',
-      ) ?? findRowAroundSubmit(host);
-    if (row && isVisible(row)) rows.add(row);
+  // Direct web-component selectors.
+  for (const sel of HOST_SELECTORS) {
+    for (const el of root.querySelectorAll<HTMLElement>(sel)) {
+      if (!isVisible(el)) continue;
+      if (seen.has(el)) continue;
+      seen.add(el);
+      out.push(el);
+    }
   }
 
-  // Strategy B: behavioural — find any visible "Comment" / "Reply" / "Post"
-  // button that has a sibling "Cancel" button. That row is the composer's
-  // action row regardless of which web component wraps it.
-  const buttons = root.querySelectorAll<HTMLElement>('button');
-  for (const btn of buttons) {
-    if (!isVisible(btn)) continue;
-    const text = (btn.textContent ?? '').trim();
-    if (!SUBMIT_LABELS.has(text)) continue;
-    const row = btn.parentElement;
-    if (!row) continue;
-    const hasCancel = Array.from(row.querySelectorAll('button')).some(
-      (b) => (b.textContent ?? '').trim() === 'Cancel',
-    );
-    if (hasCancel) rows.add(row);
+  // Visible contenteditable in light DOM — walk up to a stable host.
+  const editables = root.querySelectorAll<HTMLElement>('[contenteditable="true"]');
+  for (const ce of editables) {
+    if (!isVisible(ce)) continue;
+    const host =
+      ce.closest<HTMLElement>(HOST_SELECTORS.join(',')) ??
+      ce.closest<HTMLElement>('form, [role="form"]') ??
+      ce.parentElement?.parentElement ??
+      ce.parentElement;
+    if (host && isVisible(host) && !seen.has(host)) {
+      seen.add(host);
+      out.push(host);
+    }
   }
 
-  return Array.from(rows);
+  return out;
 }
 
-function findRowAroundSubmit(scope: ParentNode): HTMLElement | null {
-  const submit = scope.querySelector<HTMLElement>('button[type="submit"]');
-  return submit?.parentElement ?? null;
-}
-
-function findRelatedShredditPost(row: HTMLElement): HTMLElement | null {
-  // Reply-to-comment: composer is nested inside a shreddit-comment.
-  const ancestorComment = row.closest<HTMLElement>('shreddit-comment');
+function findRelatedShredditPost(host: HTMLElement): HTMLElement | null {
+  const ancestorComment = host.closest<HTMLElement>('shreddit-comment');
   if (ancestorComment) return ancestorComment;
 
-  // Reply-to-post: composer is a sibling/descendant somewhere after the post.
-  let cursor: Element | null = row;
+  let cursor: Element | null = host;
   while (cursor) {
     let sibling = cursor.previousElementSibling;
     while (sibling) {
@@ -158,7 +169,6 @@ function findRelatedShredditPost(row: HTMLElement): HTMLElement | null {
     cursor = cursor.parentElement;
   }
 
-  // Fallback: first shreddit-post on the page (the OP on a post-detail page).
   return document.querySelector<HTMLElement>('shreddit-post');
 }
 
@@ -195,15 +205,45 @@ function readShredditPostBody(node: HTMLElement, id: string): Post | null {
 }
 
 function findShredditAnchor({ node }: PostHandle): HTMLElement | null {
-  return node.hasAttribute(COMPOSE_FLAG) ? node : null;
+  if (!node.hasAttribute(COMPOSE_FLAG)) return null;
+  // The composer's internals may be in shadow DOM (Cancel/Comment buttons,
+  // the contenteditable). We can't anchor there reliably. Instead, create
+  // (or reuse) a small wrapper as the next sibling of the host in light DOM
+  // and use that as the anchor — the button will appear immediately below
+  // the composer.
+  const next = node.nextElementSibling;
+  if (next instanceof HTMLElement && next.getAttribute(WRAP_ATTR) === '1') {
+    return next;
+  }
+  const wrap = document.createElement('div');
+  wrap.setAttribute(WRAP_ATTR, '1');
+  Object.assign(wrap.style, {
+    padding: '6px 0 2px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  } satisfies Partial<CSSStyleDeclaration>);
+  node.insertAdjacentElement('afterend', wrap);
+  return wrap;
 }
 
 function findShredditCompose({ node }: PostHandle): HTMLElement | null {
   if (!node.hasAttribute(COMPOSE_FLAG)) return null;
-  // The contenteditable lives somewhere up the tree from the action row.
-  let parent: HTMLElement | null = node.parentElement;
-  for (let i = 0; i < 8 && parent; i++, parent = parent.parentElement) {
-    const ce = parent.querySelector<HTMLElement>('[contenteditable="true"]');
+  // Light DOM first.
+  const lightCe = node.querySelector<HTMLElement>('[contenteditable="true"]');
+  if (lightCe && isVisible(lightCe)) return lightCe;
+  // Shadow root if open.
+  if (node.shadowRoot) {
+    const shadowCe = node.shadowRoot.querySelector<HTMLElement>(
+      '[contenteditable="true"]',
+    );
+    if (shadowCe && isVisible(shadowCe)) return shadowCe;
+  }
+  // Pierce one level deeper into descendants' shadow roots.
+  const descendants = node.querySelectorAll<HTMLElement>('*');
+  for (const d of descendants) {
+    if (!d.shadowRoot) continue;
+    const ce = d.shadowRoot.querySelector<HTMLElement>('[contenteditable="true"]');
     if (ce && isVisible(ce)) return ce;
   }
   return null;

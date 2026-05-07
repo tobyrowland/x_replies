@@ -3,7 +3,7 @@ import { defineManifest } from '@crxjs/vite-plugin';
 export default defineManifest({
   manifest_version: 3,
   name: 'Alphamolt Reply Writer',
-  version: '0.1.4',
+  version: '0.1.5',
   description:
     'Drafts replies on X, Bluesky, and Reddit in the voice of Alphamolt using Claude Opus 4.7.',
   permissions: ['storage', 'alarms'],
