@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Alphamolt Reply Writer — Settings</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --accent: #ff7a00;
+      }
+      body {
+        font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 32px 24px;
+        line-height: 1.5;
+      }
+      h1 {
+        font-size: 22px;
+        margin: 0 0 4px;
+      }
+      p.lede {
+        margin: 0 0 24px;
+        opacity: 0.75;
+      }
+      label {
+        display: block;
+        font-weight: 600;
+        margin-top: 20px;
+        margin-bottom: 6px;
+      }
+      input[type='password'],
+      input[type='text'],
+      textarea {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 8px 10px;
+        font: inherit;
+        border: 1px solid rgba(127, 127, 127, 0.4);
+        border-radius: 6px;
+        background: transparent;
+        color: inherit;
+      }
+      textarea {
+        min-height: 180px;
+        resize: vertical;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 6px 0;
+      }
+      .help {
+        font-size: 12px;
+        opacity: 0.7;
+        margin-top: 4px;
+      }
+      .actions {
+        margin-top: 28px;
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+      button {
+        padding: 8px 16px;
+        font: inherit;
+        font-weight: 600;
+        border: 1px solid var(--accent);
+        background: var(--accent);
+        color: white;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      button.secondary {
+        background: transparent;
+        color: inherit;
+      }
+      .status {
+        font-size: 13px;
+        opacity: 0.75;
+      }
+      .status.ok { color: #22aa55; opacity: 1; }
+      .status.err { color: #cc3333; opacity: 1; }
+    </style>
+  </head>
+  <body>
+    <h1>Alphamolt Reply Writer</h1>
+    <p class="lede">
+      Drafts replies on X, Bluesky, and Reddit using Claude Opus 4.7.
+    </p>
+
+    <label for="apiKey">Anthropic API key</label>
+    <input id="apiKey" type="password" autocomplete="off" placeholder="sk-ant-…" />
+    <div class="help">
+      Stored in chrome.storage.local on this device. The key is sent only to api.anthropic.com from the extension's service worker.
+    </div>
+
+    <label for="voiceSamples">Voice samples</label>
+    <textarea id="voiceSamples" placeholder="Paste 3–10 of Alphamolt's posts. Separate with blank lines."></textarea>
+    <div class="help">Used as few-shot reference for tone, cadence, and diction.</div>
+
+    <label>Active on</label>
+    <div class="row">
+      <input type="checkbox" id="enableX" />
+      <label for="enableX" style="margin: 0; font-weight: 400;">X / Twitter</label>
+    </div>
+    <div class="row">
+      <input type="checkbox" id="enableBluesky" />
+      <label for="enableBluesky" style="margin: 0; font-weight: 400;">Bluesky</label>
+    </div>
+    <div class="row">
+      <input type="checkbox" id="enableReddit" />
+      <label for="enableReddit" style="margin: 0; font-weight: 400;">Reddit</label>
+    </div>
+
+    <label for="threshold">Reply-worthy highlight threshold: <span id="thresholdValue">0.60</span></label>
+    <input id="threshold" type="range" min="0" max="1" step="0.05" />
+    <div class="help">Posts scored at or above this value get the orange accent.</div>
+
+    <div class="actions">
+      <button id="save" type="button">Save</button>
+      <button id="test" class="secondary" type="button">Test API key</button>
+      <span id="status" class="status"></span>
+    </div>
+
+    <script type="module" src="./options.ts"></script>
+  </body>
+</html>
