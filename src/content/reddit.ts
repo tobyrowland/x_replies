@@ -4,6 +4,10 @@ import { insertIntoContentEditable, insertIntoTextarea } from './common/insert';
 import type { Post } from '@/shared/types';
 
 const ID_ATTR = 'data-alphamolt-id';
+const COMPOSE_FLAG = 'data-alphamolt-r-compose';
+const POST_REF_ATTR = 'data-alphamolt-r-post-ref';
+const SUBMIT_LABELS = new Set(['Comment', 'Reply', 'Post', 'Save']);
+
 const isOldReddit = location.host === 'old.reddit.com';
 
 const redditPlatform: Platform = {
@@ -19,15 +23,13 @@ const redditPlatform: Platform = {
   },
 
   findReplyAnchor(handle) {
-    return isOldReddit
-      ? findOldRedditAnchor(handle)
-      : findShredditAnchor(handle);
+    return isOldReddit ? findOldRedditAnchor(handle) : findShredditAnchor(handle);
   },
 
   async openCompose(handle) {
     return isOldReddit
       ? findOldRedditCompose(handle.node)
-      : findShredditCompose(handle.node);
+      : findShredditCompose(handle);
   },
 
   insertDraft(compose, text) {
@@ -47,31 +49,133 @@ function isVisible(el: Element | null): boolean {
 
 // ---- New Reddit (Shreddit) -------------------------------------------------
 
+function ensureId(node: HTMLElement, prefix: string, i: number): string {
+  let id = node.getAttribute(ID_ATTR);
+  if (!id) {
+    id =
+      node.getAttribute('id') ||
+      node.getAttribute('thingid') ||
+      node.getAttribute('post-id') ||
+      node.getAttribute('comment-id') ||
+      `${prefix}-${Date.now()}-${i}`;
+    node.setAttribute(ID_ATTR, id);
+  }
+  return id;
+}
+
 function findShredditPosts(root: ParentNode): PostHandle[] {
-  const selectors = [
-    'shreddit-post',
-    'shreddit-comment',
-    'article[data-testid="post-container"]',
-  ];
-  const nodes = Array.from(
-    root.querySelectorAll<HTMLElement>(selectors.join(', ')),
-  );
-  return nodes.map((node, i) => {
-    let id = node.getAttribute(ID_ATTR);
+  const handles: PostHandle[] = [];
+
+  // Compose anchors first — these are where the button gets injected.
+  const composerRows = findShredditComposerRows(root);
+  for (const [i, row] of composerRows.entries()) {
+    let id = row.getAttribute(ID_ATTR);
     if (!id) {
-      id =
-        node.getAttribute('id') ||
-        node.getAttribute('thingid') ||
-        node.getAttribute('post-id') ||
-        node.getAttribute('comment-id') ||
-        `r-${Date.now()}-${i}`;
-      node.setAttribute(ID_ATTR, id);
+      id = `r-compose-${Date.now()}-${i}`;
+      row.setAttribute(ID_ATTR, id);
     }
-    return { node, id };
-  });
+    if (!row.hasAttribute(COMPOSE_FLAG)) {
+      row.setAttribute(COMPOSE_FLAG, '1');
+      const post = findRelatedShredditPost(row);
+      if (post) {
+        const postId = ensureId(post, 'r', handles.length);
+        row.setAttribute(POST_REF_ATTR, postId);
+      }
+    }
+    handles.push({ node: row, id });
+  }
+
+  // Posts and comments — for the highlighter only (findShredditAnchor returns
+  // null for these so no inline button is injected).
+  const things = Array.from(
+    root.querySelectorAll<HTMLElement>(
+      'shreddit-post, shreddit-comment, article[data-testid="post-container"]',
+    ),
+  );
+  for (const [i, node] of things.entries()) {
+    const id = ensureId(node, 'r', i);
+    handles.push({ node, id });
+  }
+
+  return handles;
+}
+
+function findShredditComposerRows(root: ParentNode): HTMLElement[] {
+  const rows = new Set<HTMLElement>();
+
+  // Strategy A: explicit web-component selectors.
+  const hosts = root.querySelectorAll<HTMLElement>(
+    'shreddit-composer, comment-composer-host, [data-testid="comment-composer-host"]',
+  );
+  for (const host of hosts) {
+    if (!isVisible(host)) continue;
+    const row =
+      host.querySelector<HTMLElement>(
+        'faceplate-form-action-row, [data-testid="composer-actions"]',
+      ) ?? findRowAroundSubmit(host);
+    if (row && isVisible(row)) rows.add(row);
+  }
+
+  // Strategy B: behavioural — find any visible "Comment" / "Reply" / "Post"
+  // button that has a sibling "Cancel" button. That row is the composer's
+  // action row regardless of which web component wraps it.
+  const buttons = root.querySelectorAll<HTMLElement>('button');
+  for (const btn of buttons) {
+    if (!isVisible(btn)) continue;
+    const text = (btn.textContent ?? '').trim();
+    if (!SUBMIT_LABELS.has(text)) continue;
+    const row = btn.parentElement;
+    if (!row) continue;
+    const hasCancel = Array.from(row.querySelectorAll('button')).some(
+      (b) => (b.textContent ?? '').trim() === 'Cancel',
+    );
+    if (hasCancel) rows.add(row);
+  }
+
+  return Array.from(rows);
+}
+
+function findRowAroundSubmit(scope: ParentNode): HTMLElement | null {
+  const submit = scope.querySelector<HTMLElement>('button[type="submit"]');
+  return submit?.parentElement ?? null;
+}
+
+function findRelatedShredditPost(row: HTMLElement): HTMLElement | null {
+  // Reply-to-comment: composer is nested inside a shreddit-comment.
+  const ancestorComment = row.closest<HTMLElement>('shreddit-comment');
+  if (ancestorComment) return ancestorComment;
+
+  // Reply-to-post: composer is a sibling/descendant somewhere after the post.
+  let cursor: Element | null = row;
+  while (cursor) {
+    let sibling = cursor.previousElementSibling;
+    while (sibling) {
+      if (sibling.matches('shreddit-post')) return sibling as HTMLElement;
+      const inside = sibling.querySelector<HTMLElement>('shreddit-post');
+      if (inside) return inside;
+      sibling = sibling.previousElementSibling;
+    }
+    cursor = cursor.parentElement;
+  }
+
+  // Fallback: first shreddit-post on the page (the OP on a post-detail page).
+  return document.querySelector<HTMLElement>('shreddit-post');
 }
 
 function readShredditPost({ node, id }: PostHandle): Post | null {
+  if (node.hasAttribute(COMPOSE_FLAG)) {
+    const ref = node.getAttribute(POST_REF_ATTR);
+    if (!ref) return null;
+    const post = document.querySelector<HTMLElement>(
+      `[${ID_ATTR}="${CSS.escape(ref)}"]`,
+    );
+    if (!post) return null;
+    return readShredditPostBody(post, id);
+  }
+  return readShredditPostBody(node, id);
+}
+
+function readShredditPostBody(node: HTMLElement, id: string): Post | null {
   const author =
     node.getAttribute('author') ||
     node.querySelector<HTMLElement>('a[href^="/user/"]')?.innerText.trim() ||
@@ -90,31 +194,17 @@ function readShredditPost({ node, id }: PostHandle): Post | null {
   return { platform: 'reddit', id, author, text } satisfies Post;
 }
 
-function findShredditCompose(post: HTMLElement): HTMLElement | null {
-  const composer = post.querySelector<HTMLElement>(
-    'shreddit-composer, comment-composer-host, [data-testid="comment-composer-host"]',
-  );
-  if (composer && isVisible(composer)) {
-    const ce = composer.querySelector<HTMLElement>('[contenteditable="true"]');
-    return ce ?? composer;
-  }
-  const ce = post.querySelector<HTMLElement>('[contenteditable="true"]');
-  return ce && isVisible(ce) ? ce : null;
+function findShredditAnchor({ node }: PostHandle): HTMLElement | null {
+  return node.hasAttribute(COMPOSE_FLAG) ? node : null;
 }
 
-function findShredditAnchor({ node }: PostHandle): HTMLElement | null {
-  const composer = node.querySelector<HTMLElement>(
-    'shreddit-composer, comment-composer-host, [data-testid="comment-composer-host"]',
-  );
-  if (composer && isVisible(composer)) {
-    const buttonRow = composer.querySelector<HTMLElement>(
-      'faceplate-form-action-row, [data-testid="composer-actions"]',
-    );
-    return buttonRow ?? composer.parentElement ?? composer;
-  }
-  const ce = node.querySelector<HTMLElement>('[contenteditable="true"]');
-  if (ce && isVisible(ce)) {
-    return ce.closest<HTMLElement>('shreddit-composer, form, div') ?? ce.parentElement;
+function findShredditCompose({ node }: PostHandle): HTMLElement | null {
+  if (!node.hasAttribute(COMPOSE_FLAG)) return null;
+  // The contenteditable lives somewhere up the tree from the action row.
+  let parent: HTMLElement | null = node.parentElement;
+  for (let i = 0; i < 8 && parent; i++, parent = parent.parentElement) {
+    const ce = parent.querySelector<HTMLElement>('[contenteditable="true"]');
+    if (ce && isVisible(ce)) return ce;
   }
   return null;
 }
