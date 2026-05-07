@@ -1,10 +1,11 @@
 import { runPlatform } from './common/runtime';
+import { COMPOSE_FLAG } from './common/markers';
 import type { Platform, PostHandle } from './common/platform';
 import { insertIntoContentEditable, insertIntoTextarea } from './common/insert';
 import type { Post } from '@/shared/types';
 
 const ID_ATTR = 'data-alphamolt-id';
-const COMPOSE_FLAG = 'data-alphamolt-r-compose';
+// COMPOSE_FLAG imported from common/markers
 const POST_REF_ATTR = 'data-alphamolt-r-post-ref';
 const WRAP_ATTR = 'data-alphamolt-r-wrap';
 
@@ -218,9 +219,10 @@ function findShredditAnchor({ node }: PostHandle): HTMLElement | null {
   const wrap = document.createElement('div');
   wrap.setAttribute(WRAP_ATTR, '1');
   Object.assign(wrap.style, {
-    padding: '6px 0 2px',
+    margin: '4px 0 0',
     display: 'flex',
     alignItems: 'center',
+    justifyContent: 'flex-end',
     gap: '8px',
   } satisfies Partial<CSSStyleDeclaration>);
   node.insertAdjacentElement('afterend', wrap);

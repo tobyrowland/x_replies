@@ -1,15 +1,16 @@
 export function insertIntoContentEditable(el: HTMLElement, text: string): void {
   el.focus();
-  selectAllContents(el);
+  selectAllInTarget(el);
 
   // Preferred path: paste event. ProseMirror / TipTap / Lexical / DraftJS
-  // handle this natively and replace the selection without double-firing.
+  // and Reddit's editor handle this natively and replace the selection
+  // without double-firing.
   if (tryPaste(el, text)) return;
 
-  // Fallback: execCommand insertText.
+  // Fallback: execCommand insertText replaces the current selection.
   if (document.execCommand('insertText', false, text)) return;
 
-  // Last resort: blunt textContent replacement plus an input event.
+  // Last resort.
   el.textContent = text;
   el.dispatchEvent(new InputEvent('input', { bubbles: true }));
 }
@@ -30,8 +31,21 @@ export function insertIntoTextarea(
   el.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
-function selectAllContents(el: HTMLElement): void {
-  const sel = window.getSelection();
+function selectAllInTarget(el: HTMLElement): void {
+  // execCommand('selectAll') acts on the focused element regardless of
+  // whether it lives in light DOM or inside an open shadow root, which is
+  // critical for Reddit's composer (contenteditable inside a shadow tree).
+  if (document.execCommand('selectAll', false)) return;
+
+  // Manual fallback for environments that don't honour the command.
+  const root = el.getRootNode();
+  const sel =
+    root instanceof ShadowRoot &&
+    'getSelection' in root &&
+    typeof (root as unknown as { getSelection?: () => Selection | null })
+      .getSelection === 'function'
+      ? (root as unknown as { getSelection(): Selection | null }).getSelection()
+      : window.getSelection();
   if (!sel) return;
   const range = document.createRange();
   range.selectNodeContents(el);
@@ -48,8 +62,6 @@ function tryPaste(el: HTMLElement, text: string): boolean {
       bubbles: true,
       cancelable: true,
     });
-    // dispatchEvent returns false when a listener called preventDefault —
-    // which is exactly what rich-text editors do when they handle paste.
     const notHandled = el.dispatchEvent(event);
     return !notHandled;
   } catch {

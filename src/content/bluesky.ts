@@ -1,10 +1,11 @@
 import { runPlatform } from './common/runtime';
+import { COMPOSE_FLAG } from './common/markers';
 import type { Platform, PostHandle } from './common/platform';
 import { insertIntoContentEditable } from './common/insert';
 import type { Post } from '@/shared/types';
 
 const ID_ATTR = 'data-alphamolt-id';
-const COMPOSE_FLAG = 'data-alphamolt-bsky-compose';
+// COMPOSE_FLAG imported from common/markers
 
 const POST_SELECTORS = [
   '[data-testid^="feedItem-by-"]',

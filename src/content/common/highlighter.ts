@@ -1,5 +1,6 @@
 import type { ConsensusEntry } from '@/shared/types';
 import { requestScores } from './messaging';
+import { COMPOSE_FLAG } from './markers';
 import type { Platform, PostHandle } from './platform';
 import { extractTickerHits, type TickerHit } from './tickers';
 
@@ -63,12 +64,16 @@ export async function scoreAndHighlight(
     const hits = extractTickerHits(post.text, tickerIndex);
     if (hits.length > 0) {
       hitsByPostId.set(post.id, hits);
-      const label = hits.map((h) => `$${h.entry.ticker}`).join(', ');
-      handle.node.classList.add(CONSENSUS_CLASS);
-      handle.node.setAttribute(
-        'data-alphamolt-reason',
-        `${label} — Alphamolt consensus`,
-      );
+      // Only stamp the visual accent on actual feed posts, not on compose
+      // handles (which would render the label inside the composer).
+      if (!handle.node.hasAttribute(COMPOSE_FLAG)) {
+        const label = hits.map((h) => `$${h.entry.ticker}`).join(', ');
+        handle.node.classList.add(CONSENSUS_CLASS);
+        handle.node.setAttribute(
+          'data-alphamolt-reason',
+          `${label} — Alphamolt consensus`,
+        );
+      }
       handle.node.setAttribute(SCORED_ATTR, '1');
     } else {
       remaining.push(handle);
