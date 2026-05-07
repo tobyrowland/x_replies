@@ -31,7 +31,6 @@ const status = $<HTMLSpanElement>('status');
 const consensusEndpoint = $<HTMLInputElement>('consensusEndpoint');
 const consensusStatus = $<HTMLDivElement>('consensusStatus');
 
-rulesInput.placeholder = DEFAULT_RULES;
 rulesInput.style.minHeight = '220px';
 rulesInput.style.fontFamily = 'ui-monospace, SFMono-Regular, Menlo, monospace';
 rulesInput.style.fontSize = '12px';
@@ -56,7 +55,7 @@ async function load(): Promise<void> {
   const [s, cache] = await Promise.all([getSettings(), getConsensus()]);
   apiKeyInput.value = s.apiKey;
   voiceInput.value = s.voiceSamples;
-  rulesInput.value = s.systemPromptRules ?? '';
+  rulesInput.value = s.systemPromptRules ?? DEFAULT_RULES;
   enableX.checked = s.enabledPlatforms.x;
   enableBluesky.checked = s.enabledPlatforms.bluesky;
   enableReddit.checked = s.enabledPlatforms.reddit;
