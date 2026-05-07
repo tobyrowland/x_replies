@@ -1,6 +1,5 @@
 import { runPlatform } from './common/runtime';
 import type { Platform, PostHandle } from './common/platform';
-import { waitFor } from './common/platform';
 import { insertIntoContentEditable, insertIntoTextarea } from './common/insert';
 import type { Post } from '@/shared/types';
 
@@ -26,7 +25,9 @@ const redditPlatform: Platform = {
   },
 
   async openCompose(handle) {
-    return isOldReddit ? openOldRedditCompose(handle) : openShredditCompose(handle);
+    return isOldReddit
+      ? findOldRedditCompose(handle.node)
+      : findShredditCompose(handle.node);
   },
 
   insertDraft(compose, text) {
@@ -38,7 +39,13 @@ const redditPlatform: Platform = {
   },
 };
 
-// ---- New Reddit (Shreddit web components) ----------------------------------
+function isVisible(el: Element | null): boolean {
+  if (!el) return false;
+  if (!(el instanceof HTMLElement)) return true;
+  return el.offsetParent !== null || getComputedStyle(el).position === 'fixed';
+}
+
+// ---- New Reddit (Shreddit) -------------------------------------------------
 
 function findShredditPosts(root: ParentNode): PostHandle[] {
   const selectors = [
@@ -83,38 +90,40 @@ function readShredditPost({ node, id }: PostHandle): Post | null {
   return { platform: 'reddit', id, author, text } satisfies Post;
 }
 
-function findShredditAnchor({ node }: PostHandle): HTMLElement | null {
-  // Reddit's reply control varies; pick the action bar near the bottom.
-  const actionBar =
-    node.querySelector<HTMLElement>('shreddit-comment-action-row') ||
-    node.querySelector<HTMLElement>('shreddit-post-shadow [slot="actionBar"]') ||
-    node.querySelector<HTMLElement>('[data-testid="post-comment-bar"]');
-  return actionBar ?? node;
+function findShredditCompose(post: HTMLElement): HTMLElement | null {
+  const composer = post.querySelector<HTMLElement>(
+    'shreddit-composer, comment-composer-host, [data-testid="comment-composer-host"]',
+  );
+  if (composer && isVisible(composer)) {
+    const ce = composer.querySelector<HTMLElement>('[contenteditable="true"]');
+    return ce ?? composer;
+  }
+  const ce = post.querySelector<HTMLElement>('[contenteditable="true"]');
+  return ce && isVisible(ce) ? ce : null;
 }
 
-async function openShredditCompose({ node }: PostHandle): Promise<HTMLElement | null> {
-  // Existing top-of-thread reply box.
-  const existing = document.querySelector<HTMLElement>(
-    'shreddit-composer [contenteditable="true"], textarea[name="text"]',
+function findShredditAnchor({ node }: PostHandle): HTMLElement | null {
+  const composer = node.querySelector<HTMLElement>(
+    'shreddit-composer, comment-composer-host, [data-testid="comment-composer-host"]',
   );
-  if (existing) return existing;
-  const replyBtn = node.querySelector<HTMLElement>(
-    'button[aria-label="Reply"], shreddit-comment-action-row button[name="reply"]',
-  );
-  replyBtn?.click();
-  return waitFor<HTMLElement>(
-    'shreddit-composer [contenteditable="true"], textarea[name="text"]',
-    { timeoutMs: 6000 },
-  );
+  if (composer && isVisible(composer)) {
+    const buttonRow = composer.querySelector<HTMLElement>(
+      'faceplate-form-action-row, [data-testid="composer-actions"]',
+    );
+    return buttonRow ?? composer.parentElement ?? composer;
+  }
+  const ce = node.querySelector<HTMLElement>('[contenteditable="true"]');
+  if (ce && isVisible(ce)) {
+    return ce.closest<HTMLElement>('shreddit-composer, form, div') ?? ce.parentElement;
+  }
+  return null;
 }
 
 // ---- Old Reddit ------------------------------------------------------------
 
 function findOldRedditPosts(root: ParentNode): PostHandle[] {
   const things = Array.from(
-    root.querySelectorAll<HTMLElement>(
-      'div.thing.link, div.thing.comment',
-    ),
+    root.querySelectorAll<HTMLElement>('div.thing.link, div.thing.comment'),
   );
   return things.map((node, i) => {
     let id = node.getAttribute(ID_ATTR);
@@ -135,29 +144,22 @@ function readOldRedditPost({ node, id }: PostHandle): Post | null {
   return { platform: 'reddit', id, author, text } satisfies Post;
 }
 
-function findOldRedditAnchor({ node }: PostHandle): HTMLElement | null {
-  return node.querySelector<HTMLElement>('ul.flat-list.buttons') ?? null;
+function findOldRedditCompose(post: HTMLElement): HTMLTextAreaElement | null {
+  const candidates = post.querySelectorAll<HTMLTextAreaElement>(
+    '.usertext-edit textarea[name="text"]',
+  );
+  for (const ta of candidates) {
+    if (isVisible(ta)) return ta;
+  }
+  return null;
 }
 
-async function openOldRedditCompose({ node }: PostHandle): Promise<HTMLElement | null> {
-  const existing = node.querySelector<HTMLTextAreaElement>(
-    'textarea[name="text"]',
-  );
-  if (existing) return existing;
-  const replyLink = Array.from(
-    node.querySelectorAll<HTMLAnchorElement>('ul.flat-list.buttons a'),
-  ).find((a) => a.textContent?.trim().toLowerCase() === 'reply');
-  replyLink?.click();
-  return new Promise((resolve) => {
-    let attempts = 0;
-    const tick = () => {
-      const ta = node.querySelector<HTMLTextAreaElement>('textarea[name="text"]');
-      if (ta) return resolve(ta);
-      if (++attempts > 30) return resolve(null);
-      window.setTimeout(tick, 100);
-    };
-    tick();
-  });
+function findOldRedditAnchor(handle: PostHandle): HTMLElement | null {
+  const ta = findOldRedditCompose(handle.node);
+  if (!ta) return null;
+  const wrapper = ta.closest<HTMLElement>('.usertext-edit') ?? ta.parentElement;
+  const buttons = wrapper?.querySelector<HTMLElement>('.usertext-buttons');
+  return buttons ?? wrapper ?? ta.parentElement;
 }
 
 runPlatform(redditPlatform);

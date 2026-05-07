@@ -101,6 +101,13 @@
     <textarea id="voiceSamples" placeholder="Paste 3–10 of Alphamolt's posts. Separate with blank lines."></textarea>
     <div class="help">Used as few-shot reference for tone, cadence, and diction.</div>
 
+    <label for="systemPromptRules">Reply rules (system prompt)</label>
+    <textarea id="systemPromptRules" placeholder="Loading default…"></textarea>
+    <div class="help">
+      The behavioural rules block that goes into the system prompt. Edit to tune voice, length, tone. Leave blank to use the built-in default.
+      <button id="resetRules" type="button" style="background: transparent; border: none; color: inherit; text-decoration: underline; cursor: pointer; padding: 0; font-size: 12px; opacity: 0.8;">Reset to default</button>
+    </div>
+
     <label>Active on</label>
     <div class="row">
       <input type="checkbox" id="enableX" />

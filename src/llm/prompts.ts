@@ -6,18 +6,30 @@ import type {
 } from '@/shared/types';
 
 const PLATFORM_LENGTH_RULES: Record<PlatformName, string> = {
-  x: 'Hard limit: 280 characters. Aim for 240–270 to leave headroom. No hashtags. No emoji unless the voice samples use them.',
-  bluesky:
-    'Hard limit: 300 graphemes. Aim for 240–280. No hashtags unless the voice samples use them.',
+  x: 'Hard ceiling: 280 characters. Shorter is better.',
+  bluesky: 'Hard ceiling: 300 graphemes. Shorter is better.',
   reddit:
-    'Free-form markdown is fine. 1–4 short paragraphs. Use plain prose, not bullet lists, unless the post is itself a list.',
+    '1–3 sentences unless the post is itself a long-form question. Plain prose, not bullet lists.',
 };
+
+export const DEFAULT_RULES = [
+  'Be punchy.',
+  'Be brief — be as brief as possible; brevity sounds human.',
+  "Be casual; don't capitalise; minimal punctuation.",
+  'No hashtags. No emoji unless the voice samples use them.',
+  '- Reply directly to the post. No throat-clearing ("Great point", "Interesting take", etc.).',
+  '- Never apologize, never moralize, never explain that you are an AI.',
+  '- One idea per reply. If you must hedge, hedge once.',
+  '- Plain ASCII quotes and dashes. No em-dash unless the voice samples use them.',
+].join('\n');
 
 export interface DraftPromptInput {
   voiceSamples: string;
   alphamoltPages: AlphamoltPage[];
   post: Post;
   tickerEntry?: ConsensusEntry;
+  rules?: string;
+  candidateCount: number;
 }
 
 export function buildDraftSystemPrompt({
@@ -25,22 +37,20 @@ export function buildDraftSystemPrompt({
   alphamoltPages,
   post,
   tickerEntry,
+  rules,
+  candidateCount,
 }: DraftPromptInput): string {
   const samples = voiceSamples.trim()
     ? `Voice samples (study tone, cadence, vocabulary; do not copy phrasing):\n---\n${voiceSamples.trim()}\n---`
     : 'No voice samples provided. Default to a wry, terse, observational tone.';
 
+  const rulesBlock = (rules?.trim() || DEFAULT_RULES).trim();
+
   const sections: string[] = [
     "You are drafting a reply on behalf of a user who writes in the voice of Alphamolt. Match that voice tightly: cadence, diction, level of conviction, and use of hedging.",
     samples,
     `Platform: ${post.platform}. ${PLATFORM_LENGTH_RULES[post.platform]}`,
-    [
-      'Rules:',
-      '- Reply directly to the post. No throat-clearing ("Great point", "Interesting take", etc.).',
-      '- Never apologize, never moralize, never explain that you are an AI.',
-      '- One idea per reply. If you must hedge, hedge once.',
-      '- Plain ASCII quotes and dashes. No em-dash unless the voice samples use them.',
-    ].join('\n'),
+    rulesBlock,
   ];
 
   if (tickerEntry) {
@@ -55,8 +65,9 @@ export function buildDraftSystemPrompt({
     );
   }
 
+  const n = Math.max(1, Math.min(candidateCount, 5));
   sections.push(
-    'Output: the reply text only. No preamble, no quotes around it, no explanation.',
+    `Output: a JSON array of exactly ${n} distinct candidate replies, ordered by your confidence. Each array element is a string — the reply text only, no preamble or quotes. Make the candidates meaningfully different in angle or phrasing, not three near-duplicates. Output JSON only, no prose, no code fences. Example for 3: ["draft one","draft two","draft three"]`,
   );
 
   return sections.join('\n\n');
@@ -70,9 +81,9 @@ function buildTickerBlock(entry: ConsensusEntry): string {
       : `Alphamolt has a published view on ${entry.ticker} but no thesis blurb is available; stay generic about the company and let the link carry the weight.`,
     'Ticker-reply rules (override the generic Alphamolt-link rules above):',
     `- Embed the URL ${entry.url} exactly once, naturally inside a sentence. Not at the start, not bracketed, not labeled "link".`,
-    '- Be pithy. One tight beat. The reply should land like a contrarian aside, not a thesis.',
+    '- One tight beat. The reply should land like a contrarian aside, not a thesis.',
     "- If the original post is bullish, the reply leans on Alphamolt's framing without flatly contradicting them. If bearish, same — surface the angle, don't argue.",
-    "- Do not paste the thesis verbatim. Compress it to a phrase or implication.",
+    '- Do not paste the thesis verbatim. Compress it to a phrase or implication.',
     '- Mention the ticker (with $ if natural) but do not stack multiple ticker symbols.',
   ];
   return lines.join('\n');

@@ -9,14 +9,16 @@ import type {
   ScorePostsResponse,
 } from '@/shared/types';
 
-export async function requestDraft(
+export async function requestDrafts(
   post: DraftReplyRequest['post'],
   tickerEntry?: ConsensusEntry,
+  candidateCount = 3,
 ): Promise<DraftReplyResponse> {
   const res = (await chrome.runtime.sendMessage({
     type: 'draftReply',
     post,
     tickerEntry,
+    candidateCount,
   } satisfies DraftReplyRequest)) as BackgroundResponse;
   if (!res.ok) throw new Error(res.error);
   return res.data as DraftReplyResponse;
