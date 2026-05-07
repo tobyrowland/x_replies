@@ -33,6 +33,7 @@ export interface ConsensusCache {
 export interface Settings {
   apiKey: string;
   voiceSamples: string;
+  systemPromptRules: string | null;
   enabledPlatforms: Record<PlatformName, boolean>;
   highlightThreshold: number;
   alphamoltPagesOverride: AlphamoltPage[] | null;
@@ -43,10 +44,11 @@ export interface DraftReplyRequest {
   type: 'draftReply';
   post: Post;
   tickerEntry?: ConsensusEntry;
+  candidateCount?: number;
 }
 
 export interface DraftReplyResponse {
-  draft: string;
+  drafts: string[];
 }
 
 export interface ScorePostsRequest {

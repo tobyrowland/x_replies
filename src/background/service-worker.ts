@@ -1,4 +1,4 @@
-import { draftReply, scorePosts } from '@/llm/anthropic';
+import { draftReplies, scorePosts } from '@/llm/anthropic';
 import { getSettings } from '@/shared/storage';
 import { ALPHAMOLT_PAGES } from '@/data/alphamolt-pages';
 import {
@@ -72,14 +72,16 @@ async function handleMessage(
   const pages = settings.alphamoltPagesOverride ?? ALPHAMOLT_PAGES;
 
   if (req.type === 'draftReply') {
-    const draft = await draftReply({
+    const drafts = await draftReplies({
       apiKey: settings.apiKey,
       voiceSamples: settings.voiceSamples,
       alphamoltPages: pages,
       post: req.post,
       tickerEntry: req.tickerEntry,
+      rules: settings.systemPromptRules ?? undefined,
+      candidateCount: req.candidateCount,
     });
-    return { draft };
+    return { drafts };
   }
 
   if (req.type === 'scorePosts') {

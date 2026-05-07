@@ -59,27 +59,61 @@ async function callMessages(params: {
   return text;
 }
 
-export async function draftReply(params: {
+export async function draftReplies(params: {
   apiKey: string;
   voiceSamples: string;
   alphamoltPages: AlphamoltPage[];
   post: Post;
   tickerEntry?: ConsensusEntry;
-}): Promise<string> {
+  rules?: string;
+  candidateCount?: number;
+}): Promise<string[]> {
+  const candidateCount = params.candidateCount ?? 3;
   const system = buildDraftSystemPrompt({
     voiceSamples: params.voiceSamples,
     alphamoltPages: params.alphamoltPages,
     post: params.post,
     tickerEntry: params.tickerEntry,
+    rules: params.rules,
+    candidateCount,
   });
   const user = buildDraftUserMessage(params.post);
-  return callMessages({
+  const raw = await callMessages({
     apiKey: params.apiKey,
     model: DRAFT_MODEL,
     system,
     user,
     maxTokens: 1024,
   });
+  return parseDrafts(raw, candidateCount);
+}
+
+function parseDrafts(raw: string, expected: number): string[] {
+  const jsonText = extractJsonArray(raw);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch {
+    return fallbackDrafts(raw, expected);
+  }
+  if (!Array.isArray(parsed)) return fallbackDrafts(raw, expected);
+  const drafts = parsed
+    .filter((s): s is string => typeof s === 'string')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (drafts.length === 0) return fallbackDrafts(raw, expected);
+  return drafts.slice(0, expected);
+}
+
+function fallbackDrafts(raw: string, expected: number): string[] {
+  const text = raw.trim();
+  if (!text) throw new Error('Anthropic returned no usable drafts');
+  const lines = text
+    .split(/\n{2,}/)
+    .map((s) => s.trim().replace(/^[-*\d.)\s]+/, '').replace(/^["']|["']$/g, '').trim())
+    .filter(Boolean);
+  if (lines.length >= 2) return lines.slice(0, expected);
+  return [text];
 }
 
 export async function scorePosts(params: {

@@ -5,6 +5,7 @@ const SETTINGS_KEY = 'settings';
 export const DEFAULT_SETTINGS: Settings = {
   apiKey: '',
   voiceSamples: '',
+  systemPromptRules: null,
   enabledPlatforms: { x: true, bluesky: true, reddit: true },
   highlightThreshold: 0.6,
   alphamoltPagesOverride: null,

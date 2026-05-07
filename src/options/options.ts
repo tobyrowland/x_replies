@@ -4,6 +4,7 @@ import {
   onConsensusChanged,
 } from '@/shared/consensus';
 import { DEFAULT_SETTINGS, getSettings, saveSettings } from '@/shared/storage';
+import { DEFAULT_RULES } from '@/llm/prompts';
 import type {
   BackgroundResponse,
   ConsensusCache,
@@ -20,6 +21,7 @@ const $ = <T extends HTMLElement>(id: string): T => {
 
 const apiKeyInput = $<HTMLInputElement>('apiKey');
 const voiceInput = $<HTMLTextAreaElement>('voiceSamples');
+const rulesInput = $<HTMLTextAreaElement>('systemPromptRules');
 const enableX = $<HTMLInputElement>('enableX');
 const enableBluesky = $<HTMLInputElement>('enableBluesky');
 const enableReddit = $<HTMLInputElement>('enableReddit');
@@ -28,6 +30,11 @@ const thresholdValue = $<HTMLSpanElement>('thresholdValue');
 const status = $<HTMLSpanElement>('status');
 const consensusEndpoint = $<HTMLInputElement>('consensusEndpoint');
 const consensusStatus = $<HTMLDivElement>('consensusStatus');
+
+rulesInput.placeholder = DEFAULT_RULES;
+rulesInput.style.minHeight = '220px';
+rulesInput.style.fontFamily = 'ui-monospace, SFMono-Regular, Menlo, monospace';
+rulesInput.style.fontSize = '12px';
 
 void load();
 
@@ -49,6 +56,7 @@ async function load(): Promise<void> {
   const [s, cache] = await Promise.all([getSettings(), getConsensus()]);
   apiKeyInput.value = s.apiKey;
   voiceInput.value = s.voiceSamples;
+  rulesInput.value = s.systemPromptRules ?? '';
   enableX.checked = s.enabledPlatforms.x;
   enableBluesky.checked = s.enabledPlatforms.bluesky;
   enableReddit.checked = s.enabledPlatforms.reddit;
@@ -70,6 +78,7 @@ $('save').addEventListener('click', async () => {
     ...DEFAULT_SETTINGS,
     apiKey: apiKeyInput.value.trim(),
     voiceSamples: voiceInput.value,
+    systemPromptRules: rulesInput.value.trim() || null,
     enabledPlatforms: {
       x: enableX.checked,
       bluesky: enableBluesky.checked,
@@ -81,6 +90,11 @@ $('save').addEventListener('click', async () => {
   };
   await saveSettings(next);
   setStatus('Saved.', 'ok');
+});
+
+$('resetRules').addEventListener('click', () => {
+  rulesInput.value = DEFAULT_RULES;
+  setStatus('Rules reset to default (not saved yet).');
 });
 
 $('test').addEventListener('click', async () => {
