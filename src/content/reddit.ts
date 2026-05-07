@@ -74,22 +74,10 @@ function ensureId(node: HTMLElement, prefix: string, i: number): string {
 
 // ---- New Reddit (Shreddit) -------------------------------------------------
 
-let warnedNoComposer = false;
-
 function findShredditPosts(root: ParentNode): PostHandle[] {
   const handles: PostHandle[] = [];
 
   const hosts = findShredditComposerHosts(root);
-  if (hosts.length === 0 && !warnedNoComposer) {
-    // Only warn after we know the page is loaded (some posts present).
-    if (root.querySelector('shreddit-post')) {
-      warnedNoComposer = true;
-      console.warn(
-        '[alphamolt] Reddit: could not locate a comment composer host. Tried selectors:',
-        HOST_SELECTORS,
-      );
-    }
-  }
 
   for (const [i, host] of hosts.entries()) {
     let id = host.getAttribute(ID_ATTR);
